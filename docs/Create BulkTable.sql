@@ -1,7 +1,6 @@
 USE [mydb]
 GO
 
-/****** Object:  Table [dbo].[TempTest]    Script Date: 2016/12/30 ¤W¤È 10:50:38 ******/
 SET ANSI_NULLS ON
 GO
 
