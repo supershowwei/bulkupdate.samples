@@ -4,7 +4,9 @@ using System.Data;
 using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Text;
 using System.Transactions;
 using System.Windows.Forms;
 using Dapper;
@@ -20,6 +22,27 @@ namespace BulkUpdateSamples
         public Form1()
         {
             this.InitializeComponent();
+        }
+
+        private static List<int> CreateShuffleIntList(int count)
+        {
+            var list = Enumerable.Range(0, count).ToList();
+
+            var index = list.Count;
+            var random = new Random(Guid.NewGuid().GetHashCode());
+
+            while (index > 1)
+            {
+                index--;
+
+                var randomPosition = random.Next(count);
+
+                var tmp = list[index];
+                list[index] = list[randomPosition];
+                list[randomPosition] = tmp;
+            }
+
+            return list;
         }
 
         private void button1_Click(object sender, EventArgs e)
@@ -77,16 +100,20 @@ namespace BulkUpdateSamples
                 dt.Rows.Add(row);
             }
 
+            var sb = new StringBuilder();
+            sb.AppendLine(@"UPDATE [dbo].[BulkTable]");
+            sb.AppendLine(@"  SET");
+            sb.AppendLine(@"      [Text] = [ut].[Text]");
+            sb.AppendLine(@"FROM [dbo].[BulkTable] [bt]");
+            sb.AppendLine(@"     JOIN @UpdatedTable [ut] ON [bt].[Id] = [ut].[Id];");
+
             var stopwatch = Stopwatch.StartNew();
 
             using (var tx = new TransactionScope())
             {
                 using (var sql = new SqlConnection(ConnectionString))
                 {
-                    sql.Execute(
-                        "dbo.BulkUpdateBulkTable",
-                        new { UpdatedTable = dt },
-                        commandType: CommandType.StoredProcedure);
+                    sql.Execute(sb.ToString(), new { UpdatedTable = dt.AsTableValuedParameter("BulkTableType") });
                 }
 
                 tx.Complete();
@@ -104,29 +131,26 @@ namespace BulkUpdateSamples
             dt.Columns.Add("Id", typeof(int));
             dt.Columns.Add("Text", typeof(string));
 
-            var random = new Random(Guid.NewGuid().GetHashCode());
-
-            var idList = new List<int>();
+            var idList = CreateShuffleIntList(500000);
 
             for (var i = 0; i < 100000; i++)
             {
                 // 隨機在五十萬內，取得新的 Id，代表要新增的資料。
-                var id = random.Next(500000);
-
-                if (idList.Contains(id))
-                {
-                    i--;
-                    continue;
-                }
-
-                idList.Add(id);
-
                 var row = dt.NewRow();
-                row["Id"] = id;
-                row["Text"] = $"{id:000000}-{Guid.NewGuid()}-{DateTime.Now}";
+                row["Id"] = idList[i];
+                row["Text"] = $"{idList[i]:000000}-{Guid.NewGuid()}-{DateTime.Now}";
 
                 dt.Rows.Add(row);
             }
+
+            var sb = new StringBuilder();
+            sb.AppendLine(@"MERGE INTO [dbo].[BulkTable] [bt]");
+            sb.AppendLine(@"USING @UpdatedTable [ut]");
+            sb.AppendLine(@"ON [bt].[Id] = [ut].[Id]");
+            sb.AppendLine(@"    WHEN MATCHED");
+            sb.AppendLine(@"    THEN UPDATE SET [Text] = [ut].[Text]");
+            sb.AppendLine(@"    WHEN NOT MATCHED");
+            sb.AppendLine(@"    THEN INSERT VALUES ([ut].[Id], [ut].[Text]);");
 
             var stopwatch = Stopwatch.StartNew();
 
@@ -134,10 +158,7 @@ namespace BulkUpdateSamples
             {
                 using (var sql = new SqlConnection(ConnectionString))
                 {
-                    sql.Execute(
-                        "dbo.BulkInsertOrUpdateBulkTable",
-                        new { UpdatedTable = dt },
-                        commandType: CommandType.StoredProcedure);
+                    sql.Execute(sb.ToString(), new { UpdatedTable = dt.AsTableValuedParameter("BulkTableType") });
                 }
 
                 tx.Complete();
