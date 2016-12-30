@@ -4,6 +4,6 @@ AS
      UPDATE [dbo].[BulkTable]
        SET
            [Text] = [ut].[Text]
-     FROM [BulkTable] [bt]
-          JOIN @UpdatedTable [ut] ON [bt].[Id] = [ut].[Id];
+     FROM [dbo].[BulkTable] [bt]
+          JOIN @UpdatedTable [ut] ON [bt].[Id] = [ut].[Id]
 GO
